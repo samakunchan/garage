@@ -4,11 +4,25 @@ Garage est un service de stockage d'objets (S3 compatible) léger et distribué.
 
 ## 🚀 Démarrage Rapide
 
-1. **Initialisation** (si ce n'est pas déjà fait) :
+1. **Initialisation** (génération des fichiers `garage.toml` et `compose.yml`) :
 
-   ```bash
-   ./setup.sh
-   ```
+   * **En développement (Local) :**
+
+     ```bash
+     ./setup.sh
+     ```
+
+     *Configure par défaut Garage pour utiliser les domaines locaux `.localhost`.*
+
+   * **En production (VPS) :**
+
+     ```bash
+     ./setup.sh prod <votre_domaine>
+     # Exemple :
+     ./setup.sh prod garage.samakunchan-technology.com
+     ```
+
+     *Configure Garage pour utiliser votre domaine de production.*
 
 2. **Lancer les conteneurs** :
 
@@ -73,7 +87,7 @@ ID                Hostname      Address    Tags  Zone  Capacity  DataAvail      
 
 Les clés API S3 sont composées d'un **Access Key ID** (identifiant public de la clé) et d'un **Secret Access Key** (mot de passe privé associé). Elles permettent à vos applications clientes (comme le SDK Node.js, `aws-cli` ou `rclone`) de s'authentifier de manière sécurisée pour lire et écrire des données.
 
-- **Créer une clé** :
+* **Créer une clé** :
   Génère un nouveau couple d'identifiants d'accès.
 
   > [!IMPORTANT]
@@ -83,14 +97,14 @@ Les clés API S3 sont composées d'un **Access Key ID** (identifiant public de l
   docker exec -it garage /garage key create <nom_de_la_cle>
   ```
 
-- **Lister les clés** :
+* **Lister les clés** :
   Affiche la liste de toutes les clés d'accès API configurées sur le cluster.
 
   ```bash
   docker exec -it garage /garage key list
   ```
 
-- **Voir les détails d'une clé** :
+* **Voir les détails d'une clé** :
   Affiche les informations associées à une clé spécifique (nom, permissions de création de bucket, et buckets associés). La clé secrète y est masquée pour des raisons de sécurité.
 
   ```bash
@@ -101,14 +115,14 @@ Les clés API S3 sont composées d'un **Access Key ID** (identifiant public de l
 
 Un bucket est un espace de stockage nommé (analogue à un dossier partagé ou une partition logique) dans lequel sont organisés vos fichiers (objets).
 
-- **Créer un bucket** :
+* **Créer un bucket** :
   Initialise un nouveau conteneur de fichiers vide.
 
   ```bash
   docker exec -it garage /garage bucket create <nom_du_bucket>
   ```
 
-- **Lister les buckets** :
+* **Lister les buckets** :
   Affiche tous les buckets d'objets existants sur le cluster Garage.
 
   ```bash
@@ -119,7 +133,7 @@ Un bucket est un espace de stockage nommé (analogue à un dossier partagé ou u
 
 Par défaut, une clé API nouvellement créée n'a aucun droit d'accès sur aucun bucket. Vous devez explicitement lier vos clés à vos buckets pour leur accorder des privilèges de lecture (`--read`) et/ou d'écriture (`--write`).
 
-- **Autoriser une clé sur un bucket** :
+* **Autoriser une clé sur un bucket** :
   Associe une clé API spécifique à un bucket avec les permissions souhaitées (par exemple, lecture/écriture).
 
   ```bash
@@ -152,18 +166,73 @@ Dans la configuration `garage.toml`, le domaine d'hébergement web est défini p
 
 ## 🌐 API & Ports exposés
 
-- **API S3 principale (Requêtes authentifiées)** :
-  - **Endpoint** : `http://localhost:3900`
-  - **Port** : `3900`
-  - **Région** : `garage`
+* **API S3 principale (Requêtes authentifiées)** :
+  * **Endpoint (Dev)** : `http://localhost:3900`
+  * **Endpoint (Prod)** : `https://garage.samakunchan-technology.com` (via proxy HTTPS)
+  * **Port** : `3900`
+  * **Région** : `garage`
 
-- **Serveur S3 Web (Lecture anonyme publique)** :
-  - **Endpoint** : `http://<nom_du_bucket>.web.garage.localhost:3902`
-  - **Port** : `3902`
+* **Serveur S3 Web (Lecture anonyme publique)** :
+  * **Endpoint (Dev)** : `http://<nom_du_bucket>.web.garage.localhost:3902`
+  * **Endpoint (Prod)** : `https://<nom_du_bucket>.web.garage.samakunchan-technology.com` (via proxy HTTPS)
+  * **Port** : `3902`
 
-- **API d'Administration Console** :
-  - **Endpoint** : `http://localhost:3903`
-  - **Port** : `3903`
+* **API d'Administration Console** :
+  * **Endpoint** : `http://localhost:3903`
+  * **Port** : `3903`
+
+## ⚙️ Configuration en Production
+
+Pour faire tourner Garage en production avec un nom de domaine et du HTTPS :
+
+### 1. Configuration DNS
+
+Créez les enregistrements A suivants pointant vers l'adresse IP publique de votre VPS :
+
+* `garage.samakunchan-technology.com` -> `IP_VPS`
+* `*.garage.samakunchan-technology.com` -> `IP_VPS` (Wildcard requis pour résoudre les sous-domaines des buckets)
+
+### 2. Configuration Reverse Proxy (Exemple avec Nginx & SSL Let's Encrypt)
+
+```nginx
+# 1. API S3 principal (écriture)
+server {
+    listen 443 ssl;
+    server_name garage.samakunchan-technology.com;
+
+    ssl_certificate /etc/letsencrypt/live/garage.samakunchan-technology.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/garage.samakunchan-technology.com/privkey.pem;
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://localhost:3900;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# 2. Accès public S3 Web (lecture anonyme)
+server {
+    listen 443 ssl;
+    server_name *.garage.samakunchan-technology.com;
+
+    ssl_certificate /etc/letsencrypt/live/garage.samakunchan-technology.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/garage.samakunchan-technology.com/privkey.pem;
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://localhost:3902;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
 
 ---
 *Note: Toutes les commandes utilisent `docker exec -it garage /garage ...` car le binaire Garage est localisé à la racine du conteneur et n'est pas dans le PATH global par défaut.*

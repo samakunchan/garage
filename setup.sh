@@ -1,8 +1,21 @@
 #!/bin/bash
 
+# Read arguments (default to 'dev' and 'localhost')
+ENV=${1:-"dev"}
+DOMAIN=${2:-"localhost"}
+
 # 1. Génération des secrets
 RPC_SECRET=$(openssl rand -hex 32)
 ADMIN_TOKEN=$(openssl rand -hex 32)
+
+# Determine root domains
+if [ "$ENV" = "prod" ] && [ "$DOMAIN" != "localhost" ]; then
+  ROOT_DOMAIN_API=".s3.$DOMAIN"
+  ROOT_DOMAIN_WEB=".web.$DOMAIN"
+else
+  ROOT_DOMAIN_API=".s3.garage.localhost"
+  ROOT_DOMAIN_WEB=".web.garage.localhost"
+fi
 
 # 2. Création du fichier de configuration garage.toml
 cat <<EOF > garage.toml
@@ -17,11 +30,11 @@ rpc_secret = "$RPC_SECRET"
 [s3_api]
 s3_region = "garage"
 api_bind_addr = "[::]:3900"
-root_domain = ".s3.garage.localhost"
+root_domain = "$ROOT_DOMAIN_API"
 
 [s3_web]
 bind_addr = "[::]:3902"
-root_domain = ".web.garage.localhost"
+root_domain = "$ROOT_DOMAIN_WEB"
 
 [admin]
 api_bind_addr = "0.0.0.0:3903"
@@ -32,7 +45,7 @@ EOF
 cat <<EOF > compose.yml
 services:
   garage:
-    image: dxflrs/garage:v1.0.1
+    image: dxflrs/garage:v2.3.0
     container_name: garage
     ports:
       - "3900:3900"
@@ -58,7 +71,7 @@ networks:
     external: true
 EOF
 
-echo "✅ Configuration terminée."
+echo "✅ Configuration terminée ($ENV mode)."
 echo "🔑 Admin Token : $ADMIN_TOKEN"
 echo "🚀 Pour démarrer : docker compose up -d"
 echo "⚙️  Ensuite, configurez le layout :"
