@@ -4,6 +4,13 @@
 ENV=${1:-"dev"}
 DOMAIN=${2:-"localhost"}
 
+# Determine sudo prefix based on env
+if [ "$ENV" = "prod" ]; then
+  SUDO_PREFIX="sudo "
+else
+  SUDO_PREFIX=""
+fi
+
 # 1. Génération des secrets
 RPC_SECRET=$(openssl rand -hex 32)
 ADMIN_TOKEN=$(openssl rand -hex 32)
@@ -73,10 +80,10 @@ EOF
 
 echo "✅ Configuration terminée ($ENV mode)."
 echo "🔑 Admin Token : $ADMIN_TOKEN"
-echo "🚀 Pour démarrer : docker compose up -d"
+echo "🚀 Pour démarrer : ${SUDO_PREFIX}docker compose up -d"
 echo "⚙️  Ensuite, configurez le layout :"
-echo "   docker exec -it garage /garage layout assign --zone dc1 --capacity 10G \$(docker exec garage /garage node id | cut -d'@' -f1)"
-echo "   docker exec -it garage /garage layout apply --version 1"
+echo "   ${SUDO_PREFIX}docker exec -it garage /garage layout assign --zone dc1 --capacity 10G \$(${SUDO_PREFIX}docker exec garage /garage node id | cut -d'@' -f1)"
+echo "   ${SUDO_PREFIX}docker exec -it garage /garage layout apply --version 1"
 
 
 
